@@ -8,7 +8,7 @@ greetings("David")
 # 2 rescale_fun 
 rescale_fun <- function(inp_vec, min_val = 0, max_val = 1){
 	scaled_down <- inp_vec - min(inp_vec) 
-	scaled_up <- scaled_down / diff(range(inp_vec)) * (max_val - min_val) + min_val
+	scaled_up <- scaled_down / (max(inp_vec) - min(inp_vec)) * (max_val - min_val) + min_val
   
 	return(scaled_up)
 }
