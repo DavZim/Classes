@@ -17,7 +17,8 @@ library(tidyr)
 
 # 1 Data
 ```{r}
-df <- read_csv("data/stock_data.csv")
+url <- "https://raw.githubusercontent.com/DavZim/Classes/master/04_capm/data/stock_data.csv"
+df <- read_csv(url)
 
 # IRX (T-Bill)-data is already reported as returns
 irx <- df %>% filter(ticker == "IRX") %>% mutate(price = price / (255*100)) %>%
