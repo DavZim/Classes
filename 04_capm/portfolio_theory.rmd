@@ -102,6 +102,7 @@ df2
 ggplot(df2, aes(x = sd_ret, y = exp_ret, color = w_ibm - w_msft)) +
   geom_point()
 ```
+
 # 4 Efficient Portfolio
 ```{r}
 ## using tseries to find the optimal portfolio
