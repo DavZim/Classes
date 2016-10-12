@@ -1,0 +1,219 @@
+---
+title: "Portfolio Theory Script"
+author: "David Zimmermann"
+date: "12 Oktober 2016"
+output: html_document
+---
+# 0 Needed Libraries
+```{r, message=FALSE, warning=FALSE}
+library(magrittr)
+library(dplyr)
+library(tibble)
+library(readr)
+library(ggplot2)
+library(tseries)
+library(tidyr)
+```
+
+# 1 Data
+```{r}
+df <- read_csv("data/stock_data.csv")
+
+# IRX (T-Bill)-data is already reported as returns
+irx <- df %>% filter(ticker == "IRX") %>% mutate(price = price / (255*100)) %>%
+  select(date, ticker, ret = price)
+df %<>% filter(ticker != "IRX")
+
+# calculate returns
+df %<>% group_by(ticker) %>% mutate(ret = price / lag(price) - 1) %>%
+  filter(!is.na(ret)) %>% select(date, ticker, ret)
+
+# combine the data
+df %<>% bind_rows(irx)
+
+df_wide <- spread(df, key = ticker, value = ret) %>% filter(complete.cases(.))
+
+# to make sure that we operate with the same dataset
+df <- gather(df_wide, key = ticker, value = ret, -date) 
+
+df_market <- df %>% filter(ticker == "DJI")
+
+df %<>% filter(ticker != "DJI")
+
+df_market
+df_wide
+df
+```
+
+# 2 Two assets
+```{r}
+# create weights for portfolios IBM/MSFT
+w <- seq(from = 0, to = 1, length.out = 1000)
+
+df1 <- data_frame(r_ibm = mean(df_wide$IBM),
+                 r_msft = mean(df_wide$MSFT),
+                 sd_ibm = sd(df_wide$IBM),
+                 sd_msft = sd(df_wide$MSFT),
+                 cov_ibm_msft = cov(df_wide$IBM, df_wide$MSFT),
+                 w_ibm = w,
+                 w_msft = 1 - w)
+
+# calculate the expected returns and sds
+df1 %<>% mutate(exp_ret = w_ibm * r_ibm + w_msft * r_msft,
+               var_ret = w_ibm^2 * sd_ibm^2 + w_msft^2 * sd_msft^2 + 
+                 2*w_ibm*w_msft*cov_ibm_msft) %>% 
+  mutate(sd_ret = sqrt(var_ret)) %>% select(w_ibm, w_msft, exp_ret, sd_ret)
+
+df1
+
+ggplot(df1, aes(x = sd_ret, y = exp_ret, color = w)) + geom_point()
+```
+
+# 3 Three Assets
+```{r}
+w <- seq(from = 0, to = 1, length.out = 100)
+
+df2 <- data_frame(r_ibm = mean(df_wide$IBM),
+                 r_msft = mean(df_wide$MSFT),
+                 r_csco = mean(df_wide$CSCO),
+                 sd_ibm = sd(df_wide$IBM),
+                 sd_msft = sd(df_wide$MSFT),
+                 sd_csco = sd(df_wide$CSCO),
+                 cov_ibm_msft = cov(df_wide$IBM, df_wide$MSFT),
+                 cov_ibm_csco = cov(df_wide$IBM, df_wide$CSCO),
+                 cov_msft_csco = cov(df_wide$MSFT, df_wide$CSCO),
+                 w_ibm = rep(w, each = length(w)),
+                 w_msft = rep(w, length(w)))
+# create the weigths for cisco and remove negative weights (short-sell)
+df2 %<>% mutate(w_csco = 1 - w_ibm - w_msft) %>% filter(w_csco > 0)
+
+# calculate new values
+df2 %<>% mutate(exp_ret = w_ibm * r_ibm + w_msft * r_msft + w_csco * r_csco,
+                var_ret = w_ibm^2 * sd_ibm^2 + 
+                  w_msft^2 * sd_msft^2 + 
+                  w_csco^2 * sd_csco^2 + 
+                  2 * w_ibm * w_msft * cov_ibm_msft + 
+                  2 * w_ibm * w_csco * cov_ibm_csco + 
+                  2 * w_msft * w_csco * cov_msft_csco) %>% 
+  mutate(sd_ret = sqrt(var_ret)) %>% select(w_ibm, w_msft, w_csco, exp_ret, sd_ret)
+
+df2
+
+ggplot(df2, aes(x = sd_ret, y = exp_ret, color = w_ibm - w_msft)) +
+  geom_point()
+```
+# 4 Efficient Portfolio
+```{r}
+## using tseries to find the optimal portfolio
+df_mv <- df %>% group_by(ticker) %>% summarise(exp_ret = mean(ret),
+                                               sd_ret = sd(ret))
+df_mv_sel <- df_mv %>% filter(ticker != "IRX")
+df_mv_sel
+
+max_ret <- df_mv_sel %>% filter(exp_ret == max(exp_ret)) %>% 
+  select(exp_ret) %>% as.numeric
+
+min_ret <- df_mv_sel %>%  filter(exp_ret == min(exp_ret)) %>% 
+  select(exp_ret) %>% as.numeric
+
+target_returns <- seq(from = min_ret, to = max_ret, length.out = 1000)
+
+head(target_returns)
+
+# a function that calculates the opimum portfolio for a given set of returns
+calc_sds <- function(target_returns, stock_mat, shorts = F) {
+  ret <- lapply(target_returns, function(x) {
+    op <- try(portfolio.optim(stock_mat, x, shorts = shorts)) # to catch errors
+    # if unclear about try, see ?try
+    
+    if (inherits(op, "try-error")) {
+      return(NA)
+    } else {
+      return(op$ps)
+    }
+  })
+  return(unlist(ret))
+}
+
+target_sds <- calc_sds(target_returns = target_returns, 
+                       stock_mat = as.matrix(df_wide[c("CSCO", "IBM", "MSFT")]),
+                       shorts = F)
+
+df3 <- data_frame(exp_ret = target_returns, sd_ret = target_sds)
+
+df3 
+
+ggplot() +
+  geom_point(data = df2, aes(x = sd_ret, y = exp_ret, color = w_ibm - w_msft)) +
+  geom_point(data = df3, aes(x = sd_ret, y = exp_ret), color = "red") +
+  geom_point(data = df_mv_sel, aes(x = sd_ret, y = exp_ret), color = "black")
+  
+```
+
+# 5 Sharpe-Ratio
+```{r}
+rf <- df_mv %>% filter(ticker == "IRX") %>% select(exp_ret) %>% as.numeric
+rf
+
+df3 <- df3 %>% mutate(sr = (exp_ret - rf) / sd_ret)
+max_sharpe_pf <- df3 %>% filter(sr == max(sr, na.rm = T))
+max_sharpe_pf
+
+df3 
+
+ggplot(df3, aes(x = sd_ret, y = exp_ret, color = sr)) +
+  geom_point() +
+  geom_point(data = df_mv_sel, aes(x = sd_ret, y = exp_ret), color = "black") +
+  geom_point(data = max_sharpe_pf, aes(x = sd_ret, y = exp_ret), color = "red")
+```
+
+# 6 Capital Market Line (CML)
+```{r}
+ggplot() +
+  # CML
+  geom_abline(intercept = rf, slope = max_sharpe_pf$sr, size = 1) +
+  # Efficient Frontier
+  geom_point(data = df3, aes(x = sd_ret, y = exp_ret), color = "blue") +
+  # Max Sharpe Point
+  geom_point(data = max_sharpe_pf, aes(x = sd_ret, y = exp_ret), color = "red") +
+  # R_f Point
+  geom_point(aes(x = 0, y = rf), color = "red") + 
+  # Assets Points
+  geom_point(data = df_mv_sel, aes(x = sd_ret, y = exp_ret), color = "black")
+```
+
+# 7 Security Market Line (SML)
+```{r}
+calcBeta <- function(rets, market_rets) {
+  cov(rets, market_rets) / var(market_rets)
+}
+exp_ret_m <- mean(df_wide$DJI)
+
+df4 <- left_join(df, df_wide[c("date", "DJI")], by = "date")
+
+df4 %<>% filter(ticker != "IRX") %>% group_by(ticker) %>% 
+  summarise(rf = rf,
+            exp_ret_m = mean(DJI),
+            beta = calcBeta(ret, DJI),
+            realised_ret = mean(ret)) %>%
+  mutate(exp_ret = rf + beta * (exp_ret_m - rf))
+
+df4 %<>% gather(key = variable, value = value, -ticker, -rf, -exp_ret_m, -beta)
+
+df4
+
+ggplot(df4, aes(x = beta, y = value, color = variable)) +
+  # The CML
+  geom_abline(intercept = rf, slope = exp_ret_m - rf,
+            color = "black") +
+  # Points
+  geom_point() + 
+  # Labels
+  geom_label(aes(label = ticker, fill = variable), color = "black", hjust = -0.1) + 
+  # Proper Limits
+  xlim(c(0, 1.5)) + ylim(c(0, 0.0003))
+```
+
+
+
+
