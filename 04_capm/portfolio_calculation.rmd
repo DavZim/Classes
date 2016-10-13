@@ -1,0 +1,51 @@
+---
+title: "Testing the CAPM"
+author: "David Zimmermann"
+date: "October 13, 2016"
+output: html_document
+---
+
+# 0. Libraries
+```{r, message=FALSE, warning=FALSE}
+library(tidyverse)
+library(magrittr)
+```
+
+# 1. Load the Data and create the Returns Matrix
+```{r, message=FALSE, warning=FALSE}
+url_dji_all <- "https://raw.githubusercontent.com/DavZim/Classes/master/04_capm/data/stock_data_large.csv"
+df <- read_csv(url_dji_all)
+
+df %<>% group_by(ticker) %>% mutate(ret = price / lag(price) - 1)
+df_wide <- df %>% select(date, ticker, ret) %>% spread(key = ticker, value = ret) %>% filter(complete.cases(.))
+df_wide
+
+return_mat <- as.matrix(select(df_wide, -date))
+dim(return_mat)
+
+exp_ret <- colMeans(return_mat)
+exp_ret
+```
+
+# 2. Create some weights
+```{r}
+set.seed(254592487)
+w <- rnorm(ncol(return_mat)) 
+w <- w / sum(w)
+sum(w) # 100% is invested
+w # weights
+```
+
+# 3. Calculate Expected Returns
+```{r}
+exp_ret <- w %*% exp_ret
+cat("Expected return for the portfolio is:", exp_ret)
+```
+
+# 4. Calculate Expected Risk
+```{r}
+covs <- cov(return_mat)
+covs[1:3, 1:3] # take a look at the first 3 assets
+exp_sd <- sqrt(w %*% covs %*% w)
+cat("Expected standard deviation for the portfolio is:", exp_sd)
+```
