@@ -1,0 +1,184 @@
+---
+title: "Testing the CAPM"
+author: "David Zimmermann"
+date: "October 13, 2016"
+output: html_document
+---
+
+> Warning: due to large datasets (~3Mb) and simulating in total roughly 4,000 portfolios, the compilation of the document may take a while (<2 minute). You can reduce the time by downloading the files and loading the files from your hard drive and/or by reducing the number of simulated portfolios (may introduce in non-max-sharpe portfolios).
+
+# 0. Libraries
+```{r, message=FALSE, warning=FALSE}
+library(tidyverse) # combines the libraries from the tidyvers
+library(magrittr)
+library(tseries)
+```
+
+# 1.a. Load the Data
+```{r, message=FALSE, warning=FALSE}
+# Get IRX (risk-free rate) and DJI (Market)
+url_dji_selection <- "https://raw.githubusercontent.com/DavZim/Classes/master/04_capm/data/stock_data.csv"
+df_other <- read_csv(url_dji_selection)
+
+# IRX is already reported as returns, therefore rebase to daily returns and calculate
+# indexed prices
+df_t <- df_other %>% filter(ticker == "IRX") %>% 
+  mutate(price = 100 * cumprod(price / (255 * 100) + 1))
+
+df_other <- bind_rows(filter(df_other, ticker == "DJI"), df_t)
+
+# get the stock data for the DJI-stocks
+url_dji_all <- "https://raw.githubusercontent.com/DavZim/Classes/master/04_capm/data/stock_data_large.csv"
+df <- read_csv(url_dji_all)
+df_all <- bind_rows(df, df_other)
+
+# Calculate the returns (ret)
+df_all %<>% group_by(ticker) %>% mutate(ret = price / lag(price) - 1)
+
+# clean the data of missing values to operate with the same data throughout the analysis
+df_wide <- df_all %>% select(date, ticker, ret) %>% 
+  spread(key = ticker, value = ret) %>% filter(complete.cases(.))
+
+df_all <- df_wide %>% gather(key = ticker, value = ret, -date)
+
+rf <- df_wide %>% summarise(rf = mean(IRX)) %>% as.numeric
+exp_ret_m <- df_wide %>% summarise(rf = mean(DJI)) %>% as.numeric
+
+df_all %<>% mutate(date = as.Date(date))
+
+# we only need the variables rf, exp_ret_m, df_all, and df_wide later on, remove the others
+rm(df, url_dji_all, url_dji_selection, df_t, df_other)
+df_wide
+df_all
+rf
+exp_ret_m
+```
+# 1.b. Functions
+```{r}
+
+#' Calculates the weights in the max-sharpe portfolio
+#'
+#' The function takes a return matrix and calculates the weights for the max-sharpe portfolio.
+#' It does so by simulting n portfolios and then returns the weights of the maximum sharpe portfolio
+#' @param ret_mat a matrix with the retuns, one stock per column, each row a date
+#' @param shorts a logical value, indicating if short-selling is allowed
+#' @param n the number of simulated portfolios, defaults to 1000
+#'
+#' @return a vector indicating the weights for the max-sharpe portfolio
+#'
+#' @examples
+getWeightsMaxSharpe <- function(ret_mat, shorts, n = 1000) {
+  calc_sds <- function(target_returns, stock_mat, shorts = F) {
+    ret <- lapply(target_returns, function(x) {
+      op <- try(portfolio.optim(stock_mat, x, shorts = shorts)) # to catch errors
+      # if unclear about try, see ?try
+      
+      if (inherits(op, "try-error")) {
+        return(NA)
+      } else {
+        return(op$ps)
+      }
+    })
+    return(unlist(ret))
+  }
+  
+  rets <- seq(from = min(colMeans(ret_mat)), 
+              to = max(colMeans(ret_mat)), length.out = n)
+  sds <- calc_sds(rets, ret_mat, shorts = shorts)
+  
+  df <- data_frame(exp_ret = rets, sd_ret = sds) %>% na.omit
+  
+  df %<>% mutate(sr = (exp_ret - rf) / sd_ret) %>% filter(sr == max(sr))
+  
+  weights_short <- portfolio.optim(ret_mat, df$exp_ret, shorts = shorts)$pw
+  
+  return(weights_short)
+}
+```
+
+# 2. In Sample Test
+```{r}
+# crate the return matrix
+ret_mat <- as.matrix(select(df_wide, -date, -DJI, -IRX))
+
+# find the weights with and without short-selling
+weights_short <- getWeightsMaxSharpe(ret_mat, shorts = T, n = 1000)
+weights_nt_short <- getWeightsMaxSharpe(ret_mat, shorts = F, n = 1000)
+
+# compute the returns for the portfolios (with and without short-selling)
+ret_short <- t(matrix(weights_short, nrow = 1) %*% t(ret_mat))
+ret_nt_short <- t(matrix(weights_nt_short, nrow = 1) %*% t(ret_mat))
+
+# combine the data into a data_frame
+df_is <- data_frame(date = rep(df_wide$date, 3),
+                    type = rep(c("PF_short", "PF_nt_short", "market"), each = nrow(df_wide)),
+                    ret = c(ret_short, ret_nt_short, df_wide$DJI))
+
+df_is %<>% group_by(type) %>% mutate(price = 100 * cumprod(1 + ret))
+df_is
+```
+
+## Plot
+```{r}
+ggplot(df_is, aes(x = date, y = price, color = type)) + 
+  geom_line() + 
+  scale_color_manual(name = "Portfolio", labels = c("DJI", "Long-only", "Short"), 
+                     values = c("#e41a1c", "#377eb8", "#4daf4a"))
+```
+
+# 3. Out of Sample Test
+## "Train" the Model (CAPM)
+```{r}
+# split the dataset into training and testing
+df_training <- df_all %>% filter(date < as.Date("2010-01-01"))
+
+# the return matrix for the training dataset
+ret_mat_training <- df_training %>% spread(key = ticker, value = ret) %>% 
+  select(-date, -DJI, -IRX) %>% as.matrix()
+
+# calculate the weights for each stock
+weights_short_oos <- getWeightsMaxSharpe(ret_mat_training, shorts = T, n = 1000)
+weights_nt_short_oos <- getWeightsMaxSharpe(ret_mat_training, shorts = F, n = 1000)
+```
+## "Test" the Model (CAPM) Out Of Sample
+```{r}
+# take the training dataset
+df_test <- df_all %>% filter(date >= as.Date("2010-01-01"))
+
+# the return matrix for the test dataset
+ret_mat_test <- df_test %>% spread(key = ticker, value = ret) %>% 
+  select(-date, -DJI, -IRX) %>% as.matrix()
+
+# calculate the returns using the weights as estimated before (on the training-set) 
+# and the returns from the test dataset
+ret_short_oos <- t(matrix(weights_short_oos, nrow = 1) %*% t(ret_mat_test))
+ret_nt_short_oos <- t(matrix(weights_nt_short_oos, nrow = 1) %*% t(ret_mat_test))
+
+# include the date and the market (DJI)
+df_test_wide <- spread(df_test, key = ticker, value = ret) %>% select(date, DJI)
+
+# combine the data into a single dataset
+df_oos <- data_frame(date = rep(df_test_wide$date, 3),
+                    type = rep(c("PF_short", "PF_nt_short", "market"), 
+                               each = nrow(df_test_wide)),
+                    ret = c(ret_short_oos, ret_nt_short_oos, df_test_wide$DJI))
+
+# compute the prices
+df_oos %<>% group_by(type) %>% mutate(price = 100 * cumprod(1 + ret))
+df_oos
+```
+## Plot
+```{r}
+ggplot(df_oos, aes(x = date, y = price, color = type)) + 
+  geom_line() + 
+  scale_color_manual(name = "Portfolio", labels = c("DJI", "Long-only", "Short"), 
+                     values = c("#e41a1c", "#377eb8", "#4daf4a"))
+```
+
+# 4. Finding the Mistake
+
+> Question: Does it make sense to have a portolio outperforming the market by roughly 2.5 times?
+
+Answer: Probably not, so where is the mistake in the calculations?
+
+Price: A free beverage at the next bar evening or a snack of your choice from the vending machine in uni during the next class, additionally, eternal fame for doing this! :)
