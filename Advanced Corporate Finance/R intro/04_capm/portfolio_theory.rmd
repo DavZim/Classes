@@ -17,9 +17,6 @@ library(tidyr)
 
 # 1 Data
 ```{r}
-#load data
-# df <- read_csv("data/stock_data.csv")
-# OR
 url <- "https://raw.githubusercontent.com/DavZim/Classes/master/04_capm/data/stock_data.csv"
 df <- read_csv(url)
 
