@@ -13,7 +13,7 @@ library(magrittr)
 
 # 1. Load the Data and create the Returns Matrix
 ```{r, message=FALSE, warning=FALSE}
-url_dji_all <- "https://raw.githubusercontent.com/DavZim/Classes/master/04_capm/data/stock_data_large.csv"
+url_dji_all <- "https://raw.githubusercontent.com/DavZim/Classes/master/Advanced%20Corporate%20Finance/R%20intro/04_capm/data/stock_data_large.csv"
 df <- read_csv(url_dji_all)
 
 df %<>% group_by(ticker) %>% mutate(ret = price / lag(price) - 1)

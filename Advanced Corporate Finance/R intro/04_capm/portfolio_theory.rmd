@@ -17,7 +17,7 @@ library(tidyr)
 
 # 1 Data
 ```{r}
-url <- "https://raw.githubusercontent.com/DavZim/Classes/master/04_capm/data/stock_data.csv"
+url <- "https://raw.githubusercontent.com/DavZim/Classes/master/Advanced%20Corporate%20Finance/R%20intro/04_capm/data/stock_data.csv"
 df <- read_csv(url)
 
 # IRX (T-Bill)-data is already reported as returns

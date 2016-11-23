@@ -27,7 +27,7 @@ Use `stockData.csv` and:
 2. Visualise prices for selected stocks (level and indexed) and save the output as pdfs.
 3. Compute returns for all stocks, visualise correlations between different selected stocks.
 
-Link to `stockData.csv`: https://raw.githubusercontent.com/DavZim/Classes/master/03_stockData/data/stockData.csv
+Link to `stockData.csv`: https://raw.githubusercontent.com/DavZim/Classes/master/Advanced%20Corporate%20Finance/R%20intro/03_stockData/data/stockData.csv
 
 # Solutions
 The solutions are posted in the respective folders. 

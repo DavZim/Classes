@@ -17,7 +17,7 @@ library(tseries)
 # 1.a. Load the Data
 ```{r, message=FALSE, warning=FALSE}
 # Get IRX (risk-free rate) and DJI (Market)
-url_dji_selection <- "https://raw.githubusercontent.com/DavZim/Classes/master/04_capm/data/stock_data.csv"
+url_dji_selection <- "https://raw.githubusercontent.com/DavZim/Classes/master/Advanced%20Corporate%20Finance/R%20intro/04_capm/data/stock_data.csv"
 df_other <- read_csv(url_dji_selection)
 
 # IRX is already reported as returns, therefore rebase to daily returns and calculate
@@ -28,7 +28,7 @@ df_t <- df_other %>% filter(ticker == "IRX") %>%
 df_other <- bind_rows(filter(df_other, ticker == "DJI"), df_t)
 
 # get the stock data for the DJI-stocks
-url_dji_all <- "https://raw.githubusercontent.com/DavZim/Classes/master/04_capm/data/stock_data_large.csv"
+url_dji_all <- "https://raw.githubusercontent.com/DavZim/Classes/master/Advanced%20Corporate%20Finance/R%20intro/04_capm/data/stock_data_large.csv"
 df <- read_csv(url_dji_all)
 df_all <- bind_rows(df, df_other)
 
