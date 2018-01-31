@@ -1,7 +1,7 @@
 ---
 title: "R Event Study"
 author: "David Zimmermann"
-date: '2016-11-23'
+date: '2018-01-31'
 output:
   html_document: default
   html_notebook: default
@@ -85,7 +85,7 @@ merged <- merged %>% group_by(company) %>%
 merged
 ```
 
-Now we want to split our sample into estimation-sample ($[-230, +31]$) and event-sample ($[-30,+30]$).
+Now we want to split our sample into estimation-sample ($[-230, -31]$) and event-sample ($[-30,+30]$).
 We also want to have a quick visualization of the return correlations to the market.
 
 ```{r}
@@ -220,7 +220,7 @@ The following chunk uses CARs to see if the price-development (which is represen
 stars <- function(p) {
   ifelse(p < 0.001, "***",
          ifelse(p < 0.01, "**",
-                ifelse(p < 0.05, "*", "")))
+                ifelse(p < 0.05, "*", " ")))
 }
 
 test2 <- indiv_event %>% 
@@ -230,8 +230,9 @@ test2 <- indiv_event %>%
          t_value = mean_car / sqrt(var_car),
          p_value = pt(abs(t_value), df = n(), lower.tail = F)*2)
 
-test2 %>% mutate(sign = stars(p_value)) %>%
-  select(event_time, car = cumsum(mean_car), t_value, sign) %>%
+test2 %>% mutate(sign = stars(p_value),
+                 car = cumsum(mean_car)) %>%
+  select(event_time, t_value, sign) %>%
   filter(event_time %in% -3:6) # look only at the frame [-3, 6], to have less output
 ```
 
