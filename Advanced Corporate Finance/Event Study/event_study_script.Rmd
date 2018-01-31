@@ -134,6 +134,33 @@ cmrm <- estimation %>% group_by(company) %>% summarise(cmrm = mean(ret))
 cmrm
 ```
 
+## CAPM
+To calculate the capm we can use the simplified market-model (estimates the intercept (risk-free rate) instead of imposing it) which uses a linear regression of the form $return \sim marketreturn$, using the `broom`-library we can do the following:
+```{r}
+capm <- estimation %>%
+  group_by(company) %>%
+  # "do" a regression using do() from the broom-package (tidyverse)
+  # see https://github.com/tidyverse/broom
+  do(fit = lm(ret ~ mret, data = .)) %>% 
+  # get the coefficients: intercept and slope (alpha and beta) 
+  # and discard the model itself (fit)
+  mutate(alpha = coefficients(fit)[1],
+         beta = coefficients(fit)[2],
+         fit = NULL)
+capm
+
+event_capm <- left_join(event, capm, by = "company") %>% 
+  # compute the expected return
+  mutate(capm = alpha + mret * beta,
+         alpha = NULL,
+         beta = NULL)
+event_capm
+```
+
+Nonetheless, we will continue the tests using the CMRM and leave the testing of the CAPM to the interested reader.
+
+## Merge Returns
+
 Next, we want to merge the expected returns into the event-dataset to be able to calculate the next steps.
 
 ```{r}
@@ -232,7 +259,7 @@ test2 <- indiv_event %>%
 
 test2 %>% mutate(sign = stars(p_value),
                  car = cumsum(mean_car)) %>%
-  select(event_time, t_value, sign) %>%
+  select(event_time, car, t_value, sign) %>%
   filter(event_time %in% -3:6) # look only at the frame [-3, 6], to have less output
 ```
 
